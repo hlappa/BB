@@ -10,6 +10,8 @@ defmodule BB.Application do
     children = [
       # Starts a worker by calling: BB.Worker.start_link(arg)
       # {BB.Worker, arg}
+      {Phoenix.PubSub, name: :trade_stream},
+      {BB.Handler, name: :bb_handler}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
