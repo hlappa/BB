@@ -25,7 +25,8 @@ defmodule BB.MixProject do
       {:websockex, "~> 0.4.3"},
       {:jason, "~> 1.2"},
       {:decimal, "~> 2.0"},
-      {:phoenix_pubsub, "~> 2.0"}
+      {:phoenix_pubsub, "~> 2.0"},
+      {:binance, "~> 0.9.0"}
     ]
   end
 end
