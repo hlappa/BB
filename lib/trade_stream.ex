@@ -1,14 +1,14 @@
 defmodule TradeStream do
   use WebSockex
 
-  import Logger
+  require Logger
 
   alias Phoenix.PubSub
 
   @url "wss://stream.binance.com:9443/ws/"
 
-  def start_link(symbol, state) do
-    WebSockex.start_link("#{@url}#{symbol}@trade", __MODULE__, state)
+  def start_link(symbol) do
+    WebSockex.start_link("#{@url}#{symbol}@trade", __MODULE__, [])
   end
 
   def handle_frame({_type, msg}, state) do
@@ -17,7 +17,7 @@ defmodule TradeStream do
         handle_event(event)
 
       _ ->
-        log(:error, "Something went wrong with Binance stream")
+        Logger.error("Could not parse Binance stream payload: #{msg}")
     end
 
     {:ok, state}
@@ -34,6 +34,6 @@ defmodule TradeStream do
       market_maker: event["m"]
     }
 
-    PubSub.broadcast(:trade_stream, "xrp", trade)
+    PubSub.broadcast(:trade_stream, "XRPEUR", trade)
   end
 end

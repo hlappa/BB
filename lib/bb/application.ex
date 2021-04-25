@@ -8,14 +8,10 @@ defmodule BB.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: BB.Worker.start_link(arg)
-      # {BB.Worker, arg}
       {Phoenix.PubSub, name: :trade_stream},
       {BB.Handler, name: :bb_handler}
     ]
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
     opts = [strategy: :one_for_one, name: BB.Supervisor]
     Supervisor.start_link(children, opts)
   end

@@ -1,3 +1,3 @@
 defmodule Trader.Opts do
-  defstruct [:quantity, :price, :symbol]
+  defstruct [:quantity, :price, :symbol, :tick_size, :profit]
 end
