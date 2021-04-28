@@ -15,7 +15,8 @@ defmodule Trader do
       buy_order_id: nil,
       buy_order_timestamp: nil,
       sell_order_id: nil,
-      sell_order_timestamp: nil
+      sell_order_timestamp: nil,
+      stop_loss: false
     }
 
     {:ok, state, {:continue, :execute_buy}}
@@ -31,7 +32,7 @@ defmodule Trader do
         }"
       )
 
-      Process.sleep(5000)
+      Process.sleep(6000)
 
       {:noreply,
        %{
@@ -49,6 +50,9 @@ defmodule Trader do
 
   @impl true
   def handle_continue(:monitor_buy_order, state) do
+    BB.Scheduler.set_buy_price(state.opts.price)
+    Process.sleep(500)
+
     with {:ok, order} <-
            Binance.get_order(state.opts.symbol, state.buy_order_timestamp, state.buy_order_id) do
       case order.status do
@@ -83,7 +87,7 @@ defmodule Trader do
         }"
       )
 
-      Process.sleep(5000)
+      Process.sleep(6000)
 
       {:noreply,
        %{state | sell_order_id: order.order_id, sell_order_timestamp: order.transact_time},
@@ -95,6 +99,8 @@ defmodule Trader do
 
   @impl true
   def handle_continue(:monitor_sell_order, state) do
+    Process.sleep(500)
+
     with {:ok, order} <-
            Binance.get_order(state.opts.symbol, state.sell_order_timestamp, state.sell_order_id) do
       case order.status do
@@ -107,8 +113,7 @@ defmodule Trader do
 
           Logger.info("Trading cycle completed. Terminating trader!")
 
-          {:noreply, %{state | status: :sell_order_fulfilled},
-           {:stop, "Trade completed. Exiting current trader."}}
+          {:stop, {:shutdown, :trade_finished}, state}
 
         _ ->
           {:noreply, state, {:continue, :monitor_sell_order}}
@@ -121,8 +126,8 @@ defmodule Trader do
   end
 
   @impl true
-  def terminate(reason, _state) do
-    Logger.info(reason)
+  def handle_info({:ssl_closed, _}, state) do
+    {:noreply, state}
   end
 
   defp calculate_sell_price(price, profit, tick) do

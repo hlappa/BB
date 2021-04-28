@@ -7,10 +7,14 @@ defmodule BB.Handler do
 
   @impl true
   def init(_state) do
-    PubSub.subscribe(:trade_stream, "XRPEUR")
+    symbol = Application.fetch_env!(:bb, :symbol)
+    PubSub.subscribe(:trade_stream, symbol)
 
     state = %{
+      symbol: symbol,
+      trader_ref: nil,
       trader_pid: nil,
+      trade: false,
       first_trade: true
     }
 
@@ -22,25 +26,45 @@ defmodule BB.Handler do
   end
 
   @impl true
-  def handle_info(msg, state) do
-    if state.trader_pid != nil && !state.first_trade do
+  def handle_info(%TradeStream.Event{} = msg, state) do
+    if (state.trader_ref != nil && !state.first_trade) || !state.trade do
       {:noreply, state}
     else
-      Logger.info("Starting new trader...")
+      tick = get_tick_size(state.symbol)
 
       opts = %Trader.Opts{
-        symbol: msg.symbol |> String.upcase(),
-        quantity: 20,
-        price: Decimal.to_float(msg.price),
-        profit: Decimal.cast(1.005) |> elem(1),
-        tick_size: get_tick_size(msg.symbol)
+        symbol: state.symbol,
+        quantity: Application.fetch_env!(:bb, :quantity),
+        price: calculate_buy_price(msg.price, tick),
+        profit: Decimal.cast(1.0025) |> elem(1),
+        tick_size: tick
       }
 
-      {:ok, pid} = Trader.start_link(opts)
-      Logger.info("Started new trader: ")
-      IO.inspect(pid)
-      {:noreply, %{state | trader_pid: pid, first_trade: false}}
+      {ref, pid} = start_new_trader(opts)
+      Logger.info("Started new trader!")
+      {:noreply, %{state | trader_ref: ref, trader_pid: pid, first_trade: false}}
     end
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    {:noreply, %{state | trader_ref: nil}}
+  end
+
+  defp start_new_trader(%Trader.Opts{} = opts) do
+    {:ok, pid} = DynamicSupervisor.start_child(:dynamic_trade_supervisor, {Trader, opts})
+
+    ref = Process.monitor(pid)
+    {ref, pid}
+  end
+
+  defp calculate_buy_price(current_price, tick) do
+    reduction = Decimal.cast(0.99975) |> elem(1)
+
+    Decimal.mult(current_price, reduction)
+    |> Decimal.div_int(tick)
+    |> Decimal.mult(tick)
+    |> Decimal.to_float()
   end
 
   defp get_tick_size(symbol) do

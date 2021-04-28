@@ -36,4 +36,8 @@ defmodule TradeStream do
 
     PubSub.broadcast(:trade_stream, "XRPEUR", trade)
   end
+
+  def handle_ping({:ping, _id}, state) do
+    {:reply, {:pong, "pong"}, state}
+  end
 end

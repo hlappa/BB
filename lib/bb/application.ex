@@ -9,7 +9,10 @@ defmodule BB.Application do
   def start(_type, _args) do
     children = [
       {Phoenix.PubSub, name: :trade_stream},
-      {BB.Handler, name: :bb_handler}
+      # {BB.Handler, name: :bb_handler},
+      # {TradeStream, "xrpeur"},
+      # {DynamicSupervisor, strategy: :one_for_one, name: :dynamic_trade_supervisor}
+      {BB.Scheduler, "xrpeur"}
     ]
 
     opts = [strategy: :one_for_one, name: BB.Supervisor]
