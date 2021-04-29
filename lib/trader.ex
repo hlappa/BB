@@ -11,15 +11,34 @@ defmodule Trader do
   def init(%Trader.Opts{} = opts) do
     state = %{
       opts: opts,
-      status: :initial,
       buy_order_id: nil,
       buy_order_timestamp: nil,
       sell_order_id: nil,
       sell_order_timestamp: nil,
+      stop_loss_order_id: nil,
+      stop_loss_order_timestamp: nil,
       stop_loss: false
     }
 
     {:ok, state, {:continue, :execute_buy}}
+  end
+
+  def trigger_stop_loss do
+    GenServer.cast(self(), {:trigger_stop_loss})
+  end
+
+  def end_stop_loss do
+    GenServer.cast(self(), {:end_stop_loss})
+  end
+
+  @impl true
+  def handle_cast(:trigger_stop_loss, state) do
+    {:noreply, %{state | stop_loss: true}}
+  end
+
+  @impl true
+  def handle_cast(:end_stop_loss, state) do
+    {:noreply, %{state | stop_loss: false}}
   end
 
   @impl true
@@ -38,8 +57,7 @@ defmodule Trader do
        %{
          state
          | buy_order_id: order.order_id,
-           buy_order_timestamp: order.transact_time,
-           status: :buy_order_created
+           buy_order_timestamp: order.transact_time
        }, {:continue, :monitor_buy_order}}
     else
       {:error, reason} ->
@@ -51,7 +69,6 @@ defmodule Trader do
   @impl true
   def handle_continue(:monitor_buy_order, state) do
     BB.Scheduler.set_buy_price(state.opts.price)
-    Process.sleep(500)
 
     with {:ok, order} <-
            Binance.get_order(state.opts.symbol, state.buy_order_timestamp, state.buy_order_id) do
@@ -63,14 +80,16 @@ defmodule Trader do
             }"
           )
 
-          {:noreply, %{state | status: :buy_order_fulfilled}, {:continue, :execute_sell}}
+          {:noreply, state, {:continue, :execute_sell}}
 
         _ ->
+          Process.sleep(500)
           {:noreply, state, {:continue, :monitor_buy_order}}
       end
     else
       {:error, reason} ->
         Logger.error("Order monitoring error:#{reason}")
+        Process.sleep(500)
         {:noreply, state, {:continue, :monitor_buy_order}}
     end
   end
@@ -101,27 +120,82 @@ defmodule Trader do
   def handle_continue(:monitor_sell_order, state) do
     Process.sleep(500)
 
+    case state.stop_loss do
+      true ->
+        with {:ok, _resp} <-
+               Binance.cancel_order(
+                 state.opts.symbol,
+                 state.sell_order_timestamp,
+                 state.sell_order_id
+               ),
+             {:ok, order} <- Binance.order_market_sell(state.opts.symbol, state.opts.quantity) do
+          Logger.info("Sell order cancelled and stop-loss in progress...")
+
+          {:noreply,
+           %{
+             state
+             | stop_loss_order_id: order.order_id,
+               stop_loss_order_timestamp: order.transact_time
+           }, {:continue, :monitor_stop_loss_order}}
+        else
+          {:error, reason} ->
+            Logger.error("Could not execute stop-loss: #{reason}")
+            {:noreply, state, {:continue, :monitor_sell_order}}
+        end
+
+      false ->
+        with {:ok, order} <-
+               Binance.get_order(
+                 state.opts.symbol,
+                 state.sell_order_timestamp,
+                 state.sell_order_id
+               ) do
+          case order.status do
+            "FILLED" ->
+              Logger.info(
+                "Sell order filled for #{order.symbol}@#{order.price} with quantity of #{
+                  state.opts.quantity
+                }"
+              )
+
+              Logger.info("Trading cycle completed. Terminating trader!")
+
+              {:stop, {:shutdown, :trade_finished}, state}
+
+            _ ->
+              Process.sleep(500)
+              {:noreply, state, {:continue, :monitor_sell_order}}
+          end
+        else
+          {:error, reason} ->
+            Logger.error("Order monitoring error:#{reason}")
+            {:noreply, state, {:continue, :monitor_sell_order}}
+        end
+    end
+  end
+
+  @impl true
+  def handle_continue(:monitor_stop_loss_order, state) do
     with {:ok, order} <-
-           Binance.get_order(state.opts.symbol, state.sell_order_timestamp, state.sell_order_id) do
+           Binance.get_order(
+             state.opts.symbol,
+             state.stop_loss_order_timestamp,
+             state.stop_loss_order_id
+           ) do
       case order.status do
         "FILLED" ->
-          Logger.info(
-            "Sell order filled for #{order.symbol}@#{order.price} with quantity of #{
-              state.opts.quantity
-            }"
-          )
-
-          Logger.info("Trading cycle completed. Terminating trader!")
-
+          Logger.info("Stop-loss fulfilled. Trading cycle completed.")
           {:stop, {:shutdown, :trade_finished}, state}
 
         _ ->
-          {:noreply, state, {:continue, :monitor_sell_order}}
+          Process.sleep(500)
+          {:noreply, state, {:continue, :monitor_stop_loss_order}}
       end
     else
       {:error, reason} ->
-        Logger.error("Order monitoring error:#{reason}")
-        {:noreply, state, {:continue, :monitor_sell_order}}
+        Logger.error("Order monitoring error: #{reason}")
+        Process.sleep(500)
+        {:noreply, state, {:continue, :monitor_stop_loss_order}}
     end
   end
 

@@ -25,6 +25,24 @@ defmodule BB.Handler do
     GenServer.start_link(__MODULE__, [])
   end
 
+  def continue_trading do
+    GenServer.cast(self(), :continue_trading)
+  end
+
+  def halt_trading do
+    GenServer.cast(self(), :halt_trading)
+  end
+
+  @impl true
+  def handle_cast(:continue_trading, state) do
+    {:noreply, %{state | trade: true}}
+  end
+
+  @impl true
+  def handle_cast(:halt_trading, state) do
+    {:noreply, %{state | trade: false}}
+  end
+
   @impl true
   def handle_info(%TradeStream.Event{} = msg, state) do
     if (state.trader_ref != nil && !state.first_trade) || !state.trade do
