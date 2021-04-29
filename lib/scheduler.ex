@@ -5,12 +5,13 @@ defmodule BB.Scheduler do
 
   @url "wss://stream.binance.com:9443/ws/"
 
-  def start_link(symbol) do
-    WebSockex.start_link("#{@url}#{symbol}@kline_3m", __MODULE__, %{buy_price: nil, klines: []})
-  end
-
-  def set_buy_price(price) do
-    send(self(), {:set_buy_price, price})
+  def start_link(symbol, handler_pid) do
+    WebSockex.start("#{@url}#{String.downcase(symbol)}@kline_3m", __MODULE__, %{
+      buy_price: nil,
+      handler_pid: handler_pid,
+      trader_pid: nil,
+      klines: []
+    })
   end
 
   @impl true
@@ -27,14 +28,16 @@ defmodule BB.Scheduler do
       stop_loss = calculate_stop_loss(new_kline_list, state.buy_price)
       trade = calculate_trading_halt(new_kline_list)
 
-      case stop_loss do
-        true -> Trader.trigger_stop_loss()
-        false -> Trader.end_stop_loss()
+      if state.trader_pid != nil do
+        case stop_loss do
+          true -> Process.send(state.trader_pid, {:trigger_stop_loss}, [])
+          false -> Process.send(state.trader_pid, {:end_stop_loss}, [])
+        end
       end
 
       case trade do
-        true -> BB.Handler.continue_trading()
-        false -> BB.Handler.halt_trading()
+        true -> Process.send(state.handler_pid, {:continue_trading}, [])
+        false -> Process.send(state.handler_pid, {:halt_trading}, [])
       end
 
       {:ok, %{state | klines: new_kline_list}}
@@ -49,8 +52,18 @@ defmodule BB.Scheduler do
   end
 
   @impl true
+  def handle_info({:set_trader_pid, pid}, state) do
+    {:ok, %{state | trader_pid: pid}}
+  end
+
+  @impl true
   def handle_ping({:ping, _id}, state) do
     {:reply, {:pong, "pong"}, state}
+  end
+
+  @impl true
+  def terminate(close_reason, _state) do
+    Logger.error(close_reason)
   end
 
   defp handle_event(%{"e" => "kline"} = kline_event) do
@@ -78,9 +91,8 @@ defmodule BB.Scheduler do
   end
 
   def calculate_trading_halt(klines) do
-    directions =
-      Enum.map(klines, fn x -> {x.open_price, x.close_price} end)
-      |> Enum.map(fn y -> determine_direction(y) end)
+    kline_pairs = Enum.map(klines, fn x -> {x.open_price, x.close_price} end)
+    directions = Enum.map(kline_pairs, fn y -> determine_direction(y) end)
 
     case directions do
       [:up] ->
@@ -93,6 +105,12 @@ defmodule BB.Scheduler do
         false
 
       [:down, :up] ->
+        true
+
+      [:up, :up] ->
+        false
+
+      [:down, :down] ->
         true
 
       [:down, :down, :down] ->
@@ -126,16 +144,22 @@ defmodule BB.Scheduler do
     close = elem(prices, 1)
     difference = calculate_difference(open, close)
 
-    case Decimal.negative?(difference) do
-      true ->
-        :down
+    term =
+      case Decimal.negative?(difference) do
+        true ->
+          :down
 
-      false ->
-        :up
-    end
+        false ->
+          :up
+      end
+
+    term
   end
 
   defp calculate_difference(a, b) do
-    ((a - b) * 100 / a) |> Decimal.cast() |> elem(1)
+    a_dec = Decimal.cast(a) |> elem(1)
+    b_dec = Decimal.cast(b) |> elem(1)
+
+    Decimal.sub(a_dec, b_dec) |> Decimal.mult(100) |> Decimal.div(a_dec)
   end
 end

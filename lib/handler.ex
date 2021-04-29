@@ -9,9 +9,14 @@ defmodule BB.Handler do
   def init(_state) do
     symbol = Application.fetch_env!(:bb, :symbol)
     PubSub.subscribe(:trade_stream, symbol)
+    {:ok, pid} = BB.Scheduler.start_link(symbol, self())
+
+    Logger.info("Starting handler and waiting to start trading...")
 
     state = %{
       symbol: symbol,
+      init: true,
+      scheduler_pid: pid,
       trader_ref: nil,
       trader_pid: nil,
       trade: false,
@@ -22,64 +27,70 @@ defmodule BB.Handler do
   end
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [])
-  end
-
-  def continue_trading do
-    Logger.info("Trading will continue after halt!")
-    GenServer.cast(self(), :continue_trading)
-  end
-
-  def halt_trading do
-    Logger.info("Trading halted!")
-    GenServer.cast(self(), :halt_trading)
+    GenServer.start(__MODULE__, [])
   end
 
   @impl true
-  def handle_cast(:continue_trading, state) do
+  def handle_info({:continue_trading}, state) do
+    Logger.info("Continue trading!")
     {:noreply, %{state | trade: true}}
   end
 
   @impl true
-  def handle_cast(:halt_trading, state) do
+  def handle_info({:halt_trading}, state) do
+    Logger.info("Halting trading!")
     {:noreply, %{state | trade: false}}
   end
 
   @impl true
   def handle_info(%TradeStream.Event{} = msg, state) do
+    if state.init do
+      price = calculate_buy_price(msg.price, get_tick_size(state.symbol))
+      Process.send(state.scheduler_pid, {:set_buy_price, price}, [])
+    end
+
     if (state.trader_ref != nil && !state.first_trade) || !state.trade do
-      {:noreply, state}
+      {:noreply, %{state | init: false}}
     else
       tick = get_tick_size(state.symbol)
+      price = calculate_buy_price(msg.price, get_tick_size(state.symbol))
 
       opts = %Trader.Opts{
         symbol: state.symbol,
         quantity: Application.fetch_env!(:bb, :quantity),
-        price: calculate_buy_price(msg.price, tick),
+        price: price,
         profit: Decimal.cast(1.0025) |> elem(1),
-        tick_size: tick
+        tick_size: tick,
+        scheduler_pid: state.scheduler_pid,
+        handler_pid: self()
       }
 
+      Process.send(state.scheduler_pid, {:set_buy_price, price}, [])
+
       {ref, pid} = start_new_trader(opts)
+
       Logger.info("Started new trader!")
+
+      Process.send(state.scheduler_pid, {:set_trader_pid, pid}, [])
+
       {:noreply, %{state | trader_ref: ref, trader_pid: pid, first_trade: false}}
     end
   end
 
   @impl true
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
-    {:noreply, %{state | trader_ref: nil}}
+    {:noreply, %{state | trader_ref: nil, trader_pid: nil}}
   end
 
   defp start_new_trader(%Trader.Opts{} = opts) do
-    {:ok, pid} = DynamicSupervisor.start_child(:dynamic_trade_supervisor, {Trader, opts})
+    {:ok, pid} = DynamicSupervisor.start_child(:dynamic_supervisor, {Trader, opts})
 
     ref = Process.monitor(pid)
     {ref, pid}
   end
 
   defp calculate_buy_price(current_price, tick) do
-    reduction = Decimal.cast(0.99975) |> elem(1)
+    reduction = Decimal.cast(0.9999) |> elem(1)
 
     Decimal.mult(current_price, reduction)
     |> Decimal.div_int(tick)

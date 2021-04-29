@@ -11,8 +11,7 @@ defmodule BB.Application do
       {Phoenix.PubSub, name: :trade_stream},
       {BB.Handler, name: :bb_handler},
       {TradeStream, "xrpeur"},
-      {DynamicSupervisor, strategy: :one_for_one, name: :dynamic_trade_supervisor},
-      {BB.Scheduler, "xrpeur"}
+      {DynamicSupervisor, strategy: :one_for_one, name: :dynamic_supervisor}
     ]
 
     opts = [strategy: :one_for_one, name: BB.Supervisor]

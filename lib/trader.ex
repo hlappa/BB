@@ -23,22 +23,21 @@ defmodule Trader do
     {:ok, state, {:continue, :execute_buy}}
   end
 
-  def trigger_stop_loss do
-    GenServer.cast(self(), {:trigger_stop_loss})
-  end
-
-  def end_stop_loss do
-    GenServer.cast(self(), {:end_stop_loss})
-  end
-
   @impl true
-  def handle_cast(:trigger_stop_loss, state) do
+  def handle_info({:trigger_stop_loss}, state) do
+    Logger.info("Triggering stop-loss!")
     {:noreply, %{state | stop_loss: true}}
   end
 
   @impl true
-  def handle_cast(:end_stop_loss, state) do
+  def handle_info({:end_stop_loss}, state) do
+    Logger.info("Ending stop-loss phase!")
     {:noreply, %{state | stop_loss: false}}
+  end
+
+  @impl true
+  def handle_info({:ssl_closed, _}, state) do
+    {:noreply, state}
   end
 
   @impl true
@@ -68,8 +67,6 @@ defmodule Trader do
 
   @impl true
   def handle_continue(:monitor_buy_order, state) do
-    BB.Scheduler.set_buy_price(state.opts.price)
-
     with {:ok, order} <-
            Binance.get_order(state.opts.symbol, state.buy_order_timestamp, state.buy_order_id) do
       case order.status do
@@ -130,6 +127,7 @@ defmodule Trader do
                ),
              {:ok, order} <- Binance.order_market_sell(state.opts.symbol, state.opts.quantity) do
           Logger.info("Sell order cancelled and stop-loss in progress...")
+          Process.send(state.handler_pid, {:halt_trading}, [])
 
           {:noreply,
            %{
@@ -197,11 +195,6 @@ defmodule Trader do
         Process.sleep(500)
         {:noreply, state, {:continue, :monitor_stop_loss_order}}
     end
-  end
-
-  @impl true
-  def handle_info({:ssl_closed, _}, state) do
-    {:noreply, state}
   end
 
   defp calculate_sell_price(price, profit, tick) do
