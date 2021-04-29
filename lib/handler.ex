@@ -26,10 +26,12 @@ defmodule BB.Handler do
   end
 
   def continue_trading do
+    Logger.info("Trading will continue after halt!")
     GenServer.cast(self(), :continue_trading)
   end
 
   def halt_trading do
+    Logger.info("Trading halted!")
     GenServer.cast(self(), :halt_trading)
   end
 
