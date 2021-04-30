@@ -31,8 +31,8 @@ defmodule BB.Scheduler do
         stop_loss = calculate_stop_loss(new_kline_list, state.buy_price)
 
         case stop_loss do
-          true -> Process.send(state.trader_pid, {:trigger_stop_loss}, [])
-          false -> Process.send(state.trader_pid, {:end_stop_loss}, [])
+          true -> Process.send(state.trader_pid, :trigger_stop_loss, [])
+          false -> Process.send(state.trader_pid, :end_stop_loss, [])
         end
       end
 
@@ -86,9 +86,6 @@ defmodule BB.Scheduler do
     [head | _tail] = klines
     difference = calculate_difference(head.close_price, price) |> Decimal.to_float()
     treshold = -2.0
-
-    IO.inspect(difference)
-    IO.inspect(difference <= treshold)
 
     difference <= treshold
   end
