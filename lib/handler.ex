@@ -59,7 +59,7 @@ defmodule BB.Handler do
         symbol: state.symbol,
         quantity: Application.fetch_env!(:bb, :quantity),
         price: price,
-        profit: Decimal.cast(1.0025) |> elem(1),
+        profit: Decimal.cast(1.005) |> elem(1),
         tick_size: tick,
         scheduler_pid: state.scheduler_pid,
         handler_pid: self()

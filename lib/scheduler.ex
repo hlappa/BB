@@ -25,10 +25,11 @@ defmodule BB.Scheduler do
 
     if kline.is_closed && state.buy_price != nil do
       new_kline_list = [kline | state.klines] |> Enum.slice(0, 3)
-      stop_loss = calculate_stop_loss(new_kline_list, state.buy_price)
       trade = calculate_trading_halt(new_kline_list)
 
       if state.trader_pid != nil do
+        stop_loss = calculate_stop_loss(new_kline_list, state.buy_price)
+
         case stop_loss do
           true -> Process.send(state.trader_pid, {:trigger_stop_loss}, [])
           false -> Process.send(state.trader_pid, {:end_stop_loss}, [])
@@ -82,10 +83,12 @@ defmodule BB.Scheduler do
   end
 
   def calculate_stop_loss(klines, price) do
-    prices = Enum.map(klines, fn x -> x.close_price end)
-    lowest = Enum.min(prices)
-    difference = calculate_difference(lowest, price) |> Decimal.to_float()
+    [head | _tail] = klines
+    difference = calculate_difference(head.close_price, price) |> Decimal.to_float()
     treshold = -2.0
+
+    IO.inspect(difference)
+    IO.inspect(difference <= treshold)
 
     difference <= treshold
   end
