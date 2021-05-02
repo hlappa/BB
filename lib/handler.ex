@@ -32,13 +32,11 @@ defmodule BB.Handler do
 
   @impl true
   def handle_info({:continue_trading}, state) do
-    Logger.info("Continue trading!")
     {:noreply, %{state | trade: true}}
   end
 
   @impl true
   def handle_info({:halt_trading}, state) do
-    Logger.info("Halting trading!")
     {:noreply, %{state | trade: false}}
   end
 
@@ -90,7 +88,7 @@ defmodule BB.Handler do
   end
 
   defp calculate_buy_price(current_price, tick) do
-    reduction = Decimal.cast(0.9999) |> elem(1)
+    reduction = Decimal.cast(1.0) |> elem(1)
 
     Decimal.mult(current_price, reduction)
     |> Decimal.div_int(tick)

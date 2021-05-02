@@ -27,13 +27,11 @@ defmodule Trader do
 
   @impl true
   def handle_info(:trigger_stop_loss, state) do
-    Logger.info("Triggering stop-loss!")
     {:noreply, %{state | stop_loss: true}}
   end
 
   @impl true
   def handle_info(:end_stop_loss, state) do
-    Logger.info("Ending stop-loss phase!")
     {:noreply, %{state | stop_loss: false}}
   end
 
@@ -52,7 +50,7 @@ defmodule Trader do
         }"
       )
 
-      Process.sleep(6000)
+      Process.sleep(7000)
 
       send(self(), :monitor_buy_order)
 
@@ -86,14 +84,14 @@ defmodule Trader do
           {:noreply, state}
 
         _ ->
-          Process.sleep(500)
+          Process.sleep(1000)
           send(self(), :monitor_buy_order)
           {:noreply, state}
       end
     else
       {:error, reason} ->
         Logger.error("Order monitoring error:#{reason}")
-        Process.sleep(500)
+        Process.sleep(1000)
         {:noreply, state, {:continue, :monitor_buy_order}}
     end
   end
@@ -110,7 +108,7 @@ defmodule Trader do
         }"
       )
 
-      Process.sleep(6000)
+      Process.sleep(7000)
 
       send(self(), :monitor_sell_order)
 
@@ -123,7 +121,7 @@ defmodule Trader do
 
   @impl true
   def handle_info(:monitor_sell_order, state) do
-    Process.sleep(500)
+    Process.sleep(1000)
 
     case state.stop_loss do
       true ->
@@ -135,15 +133,17 @@ defmodule Trader do
                ),
              {:ok, order} <- Binance.order_market_sell(state.opts.symbol, state.opts.quantity) do
           Logger.info("Sell order cancelled and stop-loss in progress...")
-          Process.send(state.handler_pid, {:halt_trading}, [])
+          Process.send(state.opts.handler_pid, {:halt_trading}, [])
+
+          Process.sleep(7000)
 
           send(self(), :monitor_stop_loss_order)
 
           {:noreply,
            %{
              state
-             | stop_loss_order_id: order.order_id,
-               stop_loss_order_timestamp: order.transact_time
+             | stop_loss_order_id: order["orderId"],
+               stop_loss_order_timestamp: order["transactTime"]
            }}
         else
           {:error, reason} ->
@@ -172,7 +172,7 @@ defmodule Trader do
               {:stop, {:shutdown, :trade_finished}, state}
 
             _ ->
-              Process.sleep(500)
+              Process.sleep(1000)
               send(self(), :monitor_sell_order)
               {:noreply, state}
           end
@@ -199,14 +199,14 @@ defmodule Trader do
           {:stop, {:shutdown, :trade_finished}, state}
 
         _ ->
-          Process.sleep(500)
+          Process.sleep(1000)
           send(self(), :monitor_stop_loss_order)
           {:noreply, state}
       end
     else
       {:error, reason} ->
         Logger.error("Order monitoring error: #{reason}")
-        Process.sleep(500)
+        Process.sleep(1000)
         send(self(), :monitor_stop_loss_order)
         {:noreply, state}
     end

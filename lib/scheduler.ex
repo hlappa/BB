@@ -85,7 +85,7 @@ defmodule BB.Scheduler do
   def calculate_stop_loss(klines, price) do
     [head | _tail] = klines
     difference = calculate_difference(head.close_price, price) |> Decimal.to_float()
-    treshold = -2.0
+    treshold = -1.0
 
     difference <= treshold
   end
