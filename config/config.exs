@@ -6,4 +6,4 @@ config :binance,
 
 config :bb,
   symbol: "XRPEUR",
-  quantity: 50
+  quantity: 100
