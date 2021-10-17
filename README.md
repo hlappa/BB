@@ -1,21 +1,11 @@
-# BB
+# BB - BinanceBot
 
-**TODO: Add description**
+Hobby project to trade with very conservative strategy on Binance. See `config/config.exs` for available configuration.
 
-## Installation
+## LICENSE
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `bb` to your list of dependencies in `mix.exs`:
+MIT
 
-```elixir
-def deps do
-  [
-    {:bb, "~> 0.1.0"}
-  ]
-end
-```
+## Caution
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/bb](https://hexdocs.pm/bb).
-
+This is not meant for production use. I'm not responsible for anything you decide to do with this piece of software.
